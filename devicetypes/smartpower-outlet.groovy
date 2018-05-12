@@ -15,7 +15,7 @@
  */
 metadata {
 	// Automatically generated. Make future change here.
-	definition(name: "SmartPower Outlet", namespace: "crowbarz", author: "SmartThings/Crow Bar", ocfDeviceType: "oic.d.smartplug", runLocally: true, minHubCoreVersion: '000.017.0012', executeCommandsLocally: false, mnmn: "SmartThings", vid: "generic-switch-power") {
+	definition(name: "SmartPower Outlet", namespace: "crowbarz", author: "SmartThings/Crow Bar", ocfDeviceType: "oic.d.smartplug", minHubCoreVersion: '000.017.0012', executeCommandsLocally: false, mnmn: "SmartThings", vid: "generic-switch-power") {
 		capability "Actuator"
 		capability "Switch"
 		capability "Power Meter"
