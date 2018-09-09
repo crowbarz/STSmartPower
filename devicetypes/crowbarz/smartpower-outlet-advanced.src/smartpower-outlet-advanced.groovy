@@ -135,5 +135,5 @@ def configure() {
 	// https://community.smartthings.com/t/turn-off-power-notifications-on-smartthings-power-outlet/81629/4
 
 	// OnOff minReportTime 0 seconds, maxReportTime 5 min. Reporting interval if no activity
-	refresh() + zigbee.onOffConfig(0, 300) + zigbee.electricMeasurementPowerConfig(minReportTime=300, maxReportTime=1200, reportableChange=0x0020)
+	refresh() + zigbee.onOffConfig(0, 300) + zigbee.electricMeasurementPowerConfig(5, 600, 0x0028)
 }
