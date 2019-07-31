@@ -10,25 +10,25 @@
  *  on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License
  *  for the specific language governing permissions and limitations under the License.
  *
+ *  2019-07-29
+ *  - Create child devices (to workaround button data not being passed through ST REST API)
+ *  - Updated tiles to support child devices
  */
 
 /* Source: https://raw.githubusercontent.com/Alutun/SmartThingsPublic/master/devicetypes/nodon/wall-switch.src/wall-switch.groovy */
 
 metadata {
 	definition (name: "NodOn Wall Switch", namespace: "NodOn", author: "Alexis Lutun") {
-    	capability "Actuator"
+        capability "Actuator"
+        capability "Sensor"
 		capability "Button"
 		capability "Configuration"
         capability "Sleep Sensor"
 		capability "Battery"
 
-		command "pushButtonOne"
-		command "pushButtonTwo"
-		command "pushButtonThree"
-		command "pushButtonFour"
-		command	"buttonEvent"
-		command	"buttonPushed"
-		command	"buttonPushed", [int]
+		attribute "numberOfButtons", "number"
+
+		command "pushButton"
 		command	"refresh"
 
 	fingerprint mfr: "0165", prod: "0002", model: "0003", cc: "5E,85,59,80,5B,70,5A,72,73,86,84", ccOut: "5E,5B,2B,27,22,20,26,84" // Wall Switch
@@ -37,41 +37,17 @@ metadata {
     }
 
 	tiles(scale: 2) {
-    	standardTile("My Octan", "device.button", width: 1, height: 1)
-        {
-			state "default", label: "", icon:"http://nodon.fr/smarthings/wall-switch/wallswitchfullicon.png", backgroundColor: "#ffffff"
-    	}
-        multiAttributeTile(name:"BatteryTile", type: "generic", width: 6, height: 4)
-        {
-       		tileAttribute ("device.battery", key: "PRIMARY_CONTROL")
-            {
+        standardTile("button", "device.button", width: 6, height: 1, decoration: "flat", canChangeIcon: true) {
+            state "default", label: "Button 1", action: "pushButton", icon:"http://nodon.fr/smarthings/wall-switch/wallswitchfullicon.png", defaultState: true, backgroundColor: "#ffffff"
+        }
+        multiAttributeTile(name:"BatteryTile", type: "generic", width: 6, height: 4) {
+       		tileAttribute ("device.battery", key: "PRIMARY_CONTROL") {
         		attributeState "default", backgroundColor: "#f58220", decoration: "flat", icon:"http://nodon.fr/smarthings/wall-switch/wallswitchfullicon.png"
            	}
-        	tileAttribute ("device.battery", key: "SECONDARY_CONTROL")
-        	{
+        	tileAttribute ("device.battery", key: "SECONDARY_CONTROL") {
         		attributeState "default", label:'${currentValue}% battery', unit:"%"
             }
 		}
-        standardTile("button One", "device.button", width: 2, height: 2, decoration: "flat")
-        {
-        	state "default", label: "", action: "pushButtonOne", icon:"http://nodon.fr/smarthings/wall-switch/wslefttop.png",defaultState: true, backgroundColor: "#ffffff"
-            state "pushed", label: "", action: "pushButtonOne", icon:"http://nodon.fr/smarthings/wall-switch/wslefttop.png", backgroundColor: "#ffffff"
-        }
-        standardTile("button Two", "device.button", width: 2, height: 2, decoration: "flat")
-        {
-            state "default", label: "",action: "pushButtonTwo", icon:"http://nodon.fr/smarthings/wall-switch/wsrighttop.png", defaultState: true, backgroundColor: "#ffffff"
-            state "pushed", label: "",action: "pushButtonTwo", icon:"http://nodon.fr/smarthings/wall-switch/wsrighttop.png", backgroundColor: "#ffffff"
-        }
-        standardTile("button Three", "device.button", width: 2, height: 2, decoration: "flat")
-        {
-            state "default", label: "", action: "pushButtonThree", icon: "http://nodon.fr/smarthings/wall-switch/wsleftbottom.png", defaultState: true, backgroundColor: "#ffffff"
-            state "pushed", label: "", action: "pushButtonThree", icon: "http://nodon.fr/smarthings/wall-switch/wsleftbottom.png", backgroundColor: "#ffffff"
-        }
-        standardTile("button Four", "device.button", width: 2, height: 2,decoration: "flat")
-        {
-            state "default", label: "",action: "pushButtonFour", icon:"http://nodon.fr/smarthings/wall-switch/wsrightbottom.png", defaultState: true, backgroundColor: "#ffffff"
-            state "pushed", label: "",action: "pushButtonFour", icon:"http://nodon.fr/smarthings/wall-switch/wsrightbottom.png", backgroundColor: "#ffffff"
-        }
         standardTile("refresh", "generic", inactiveLabel: false, decoration: "flat", width: 2, height: 2)
         {
 			state "default", label:'', action: "refresh", icon:"st.secondary.refresh"
@@ -81,25 +57,70 @@ metadata {
         {
 			state "configure", label:'', action:"configuration.configure", icon:"st.secondary.configure"
         }
-		main "My Octan"
-		details(["BatteryTile", "button One", "button Two", "configure", "button Three", "button Four", "refresh"])
+		main "button"
+		// details(["BatteryTile", "configure", "refresh", "childButtons"])
+		details(["BatteryTile", childDeviceTiles("childButtons")])
 	}
 }
 def installed()
 {
-    initialize()
+	runIn(2, "initialize", [overwrite: true])
+	// sendEvent(name: "button", value: "pushed", isStateChange: true)
+}
+
+def updated() {
+	runIn(2, "initialize", [overwrite: true])
 }
 
 def initialize()
 {
-    state.myRefresh = 0
+    // log.debug "initialize()"
+	state.myRefresh = 0
     state.batteryRefresh = 0
+    state.numberOfButtons = 4
+	sendEvent(name: "numberOfButtons", value: numberOfButtons, displayed: false)
+
+	// deleteChildButtons()
+	if (!childDevices) {
+//		log.debug("Creating Child Buttons")
+		addChildButtons(state.numberOfButtons)
+	}
 }
 
-def updated() {
-    initialize()
+private addChildButtons(numberOfButtons) {
+	for(def endpoint : 1..numberOfButtons) {
+		try {
+			String childDni = "${device.deviceNetworkId}:$endpoint"
+			def componentLabel = device.displayName + " (B${endpoint})"
+			def child = addChildDevice("NodOn Wall Switch Child Button", childDni, device.getHub().getId(), [
+                completedSetup: true,
+                label         : componentLabel,
+                isComponent   : true,
+                componentName : "button$endpoint",
+                componentLabel: "Button $endpoint"
+			])
+            // log.debug("Added Child Button $componentLabel")
+            child.sendEvent(name: "buttonId", value: endpoint, displayed: false)
+            // child.sendEvent(name: "numberOfButtons", value: 1, displayed: false)
+            // child.sendEvent(name: "button", value: "pushed", isStateChange: true)
+		} catch(Exception e) {
+			log.debug("Exception: ${e}")
+		}
+	}
 }
 
+private deleteChildButtons() {
+    log.debug("Deleting Child Buttons")
+    childDevices.each {
+        try {
+            deleteChildDevice(it.deviceNetworkId)
+        }
+        catch (e) {
+            log.debug "Error deleting ${it.deviceNetworkId}: ${e}"
+        }
+    }
+}
+    
 def parse(String description)
 {
 	def results = []
@@ -110,14 +131,15 @@ def parse(String description)
     else
     {
 		def cmd = zwave.parse(description, [0x5B: 1, 0x80: 1, 0x84: 1]) //Central Scene , battery, wake up
-		if(cmd)
-        {
-      		results += zwaveEvent(cmd)
-           // log.debug "Parsed ${cmd} to ${result.inspect()}"
-        }
-		if(!results) results = [ descriptionText: cmd, displayed: false ]
-	}
-	return results
+        //log.debug "Parsed Command: $cmd"
+		if (cmd) {
+            event = zwaveEvent(cmd)
+            if (event) {
+                results += event
+            }
+		}
+    }
+    return results
 }
 
 def zwaveEvent(physicalgraph.zwave.commands.wakeupv1.WakeUpNotification cmd)
@@ -141,19 +163,6 @@ def zwaveEvent(physicalgraph.zwave.commands.wakeupv1.WakeUpNotification cmd)
 	return results
 }
 
-def buttonEvent(button, attribute)
-{
-	if (attribute)
-    {
-    	createEvent(name: "button", value: "pushed", data: [buttonNumber: button, action: "held"] ,descriptionText: "$device.displayName button $button was held", icon:"http://nodon.fr/smarthings/octan-remote/octandiskfill.png", isStateChange: true, displayed: true)
-    }
-    else
-    {
-	  //  log.debug "ST event button Pushed ${button}"
-    	createEvent(name: "button", value: "pushed", data: [buttonNumber: button, action: "pushed"] ,descriptionText: "$device.displayName button $button was pressed", icon:"http://nodon.fr/smarthings/octan-remote/octandiskfill.png", isStateChange: true, displayed: true)
-    }
-}
-
 def zwaveEvent(physicalgraph.zwave.commands.centralscenev1.CentralSceneNotification  cmd)
 {
     Integer sceneNumber = cmd.sceneNumber as Integer
@@ -161,6 +170,40 @@ def zwaveEvent(physicalgraph.zwave.commands.centralscenev1.CentralSceneNotificat
     Integer sequenceNumber = cmd.sequenceNumber as Integer
 
 	buttonEvent(sceneNumber, keyAttributes)
+}
+
+def buttonEvent(button, keyAttributes)
+{
+	// NOTE: does not check sequence number
+	def action
+    switch (keyAttributes) {
+        case 0:
+	        action = "pushed"
+        	break
+        case 1:			
+        	action = "double" // Released
+        	break
+        case 2:
+        	action = "held"
+        	break
+    }
+    def event = createEvent(name: "button", value: action, descriptionText: "${device.displayName} button ${button} was ${action}", isStateChange: true, data: [buttonNumber: button, action: action])
+	if (!childDevices) {
+        // Send event via parent device
+        // log.debug("Button $button was $action (parent)")
+        return event
+    } else {
+        // Send event via child device
+        String childDni = "${device.deviceNetworkId}:$button"
+        def child = childDevices.find { it.deviceNetworkId == childDni }
+        if (child) {
+            child?.sendEvent(event)
+            // log.debug("Button $button was $action (child)")
+        } else {
+            log.debug("Could not find child for button $button, sending event to parent")
+            return event
+        }
+    }
 }
 
 def zwaveEvent(physicalgraph.zwave.commands.batteryv1.BatteryReport cmd)
@@ -193,28 +236,7 @@ def configure()
 	state.myRefresh = 1
 }
 
-def pushButtonOne()
+def pushButton()
 {
-	buttonPushed(1)
-}
-
-def pushButtonTwo()
-{
-	buttonPushed(2)
-}
-
-def buttonPushed(button)
-{
-	//log.debug "UX button Pushed ${button}"
-	sendEvent(name: "button", value: "pushed", data: [buttonNumber: button, action: "pushed"], descriptionText: "$device.displayName button $button was pushed",  icon:"http://nodon.fr/smarthings/octan-remote/octanfullicon.png", isStateChange: true)
-}
-
-def pushButtonThree()
-{
-	buttonPushed(3)
-}
-
-def pushButtonFour()
-{
-	buttonPushed(4)
+	buttonEvent(1, 0)
 }
